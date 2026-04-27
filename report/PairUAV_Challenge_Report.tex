@@ -1,0 +1,64 @@
+\documentclass[sigconf]{acmart}
+
+\settopmatter{printacmref=false}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\pagestyle{plain}
+
+\begin{document}
+
+\title{Challenge Report: PairUAV Last-Meter Precision Navigation for UAVs}
+
+\author{LIANGYIQI}
+\affiliation{%
+  \institution{University of Macau}
+}
+\authornote{Student ID: MC567033}
+
+\begin{abstract}
+This report describes my solution for the PairUAV challenge in CISC7202: Practical Machine Learning (Spring 2026). The task is to predict the relative heading angle and translation distance between a source UAV image and a target UAV image for last-meter precision navigation. I adopted the official baseline pipeline released for the UAVM 2026 workshop, which combines SuperGlue-based image matching with a DINO-ResNet feature backbone and a lightweight regression head. I also adapted the code for my local Windows workstation and reduced the runtime configuration to match the available GPU memory. The report summarizes the environment setup, pipeline design, submission preparation process, practical limitations, and possible directions for improvement.
+\end{abstract}
+
+\maketitle
+
+\section{Introduction}
+PairUAV focuses on fine-grained UAV pose alignment in the last stage of navigation. Given a source image and a target image, the model must predict two continuous values: the relative heading angle and the translation distance. Compared with standard retrieval-based UAV geo-localization, this task is more sensitive to small pose changes, so robust local matching and stable visual representation learning are both important.
+
+For this course challenge, my goal was to build a reproducible baseline, prepare a valid Codabench submission, and analyze the strengths and weaknesses of the official method. I used the official \texttt{UAVM\_2026} repository and kept the core model design unchanged so that my implementation stayed faithful to the released benchmark.
+
+\section{Method}
+The official baseline uses a two-stage pipeline.
+
+First, SuperGlue is applied to each image pair to generate sparse feature correspondences. SuperGlue is useful here because it performs context-aware keypoint matching instead of relying only on independent local descriptors. The output matches are stored as \texttt{.npz} files and later converted into a dense two-channel motion field.
+
+Second, the source image is resized and passed through a DINO-pretrained ResNet backbone together with the two-channel matching field. In the released code, the RGB image and the matching field are concatenated into a 5-channel tensor. A small convolutional adapter converts this 5-channel input back to 3 channels, and the backbone extracts a global representation. Finally, a regression head predicts two values for angle direction (encoded as cosine and sine) and one value for distance. The angle loss is computed on normalized 2D direction vectors, and the distance loss is computed with Smooth L1 loss on the normalized range value.
+
+\section{Implementation Details}
+I prepared the solution on my personal Windows workstation. At the time of setup (April 9, 2026), \texttt{nvidia-smi} on this machine reported an NVIDIA GeForce RTX 5060 GPU with about 8\,GB of memory and CUDA 12.8 support. Although I originally planned to use an RTX 5090, the actual visible GPU in the system was the RTX 5060, so I adjusted the runtime settings accordingly.
+
+The original repository targets Linux-style \texttt{bash} execution and uses an aggressive default batch size of 256 with 2021 data-loader workers. These settings are not appropriate for an 8\,GB GPU or a standard Windows environment. To make the code runnable locally, I prepared PowerShell scripts for environment setup, data preparation, baseline submission packaging, and training. I also changed the practical defaults in the training script to smaller values, especially batch size and worker count, and added checkpoint saving for reproducibility.
+
+For a first valid submission, I used the official baseline prediction file provided in the repository, which already contains ordered test predictions for the hidden test set. I then packaged this file into a submission zip with \texttt{result.txt} at the root, which matches the challenge upload requirement.
+
+\section{Observations}
+The baseline is attractive because it is conceptually simple and easy to reproduce once the data and pretrained files are available. The SuperGlue stage injects strong geometric cues, which is valuable for last-meter alignment where appearance similarity alone may be insufficient. The DINO-ResNet backbone also provides stable image features, especially when training data is limited compared with the full range of UAV conditions.
+
+However, the method also has several limitations. First, the pipeline depends on a large amount of precomputed matching data, which creates high storage and preprocessing cost. Second, sparse feature matching can fail under severe viewpoint change, repeated textures, weak lighting, or motion blur. When the matching quality is poor, the downstream regressor receives a noisy motion field and the final angle or distance prediction may become unstable. Third, the current model predicts only angle and distance independently from a global feature vector, so it may underuse fine spatial structure that is still present in the pair.
+
+\section{Possible Improvements}
+There are several directions that may improve the baseline.
+
+One possible improvement is to replace the simple regression head with a stronger fusion module, such as cross-attention between the source image features and the matching field. This may preserve more local geometric detail before the final prediction.
+
+Another improvement is to introduce confidence-aware filtering for SuperGlue matches. Low-confidence correspondences could be down-weighted or removed before constructing the motion field, which may reduce noisy supervision.
+
+A third improvement is to add stronger augmentation and multi-scale training. Since UAV navigation is sensitive to scale, weather, and viewpoint variation, training with more diverse perturbations may improve robustness on unseen scenes.
+
+Finally, model ensembling could be explored. For example, combining a geometric branch based on keypoint statistics with a semantic branch based on image features may provide more stable predictions than a single regressor.
+
+\section{Conclusion}
+This challenge gave me practical experience with a fine-grained UAV navigation task that is more demanding than standard image retrieval. I reproduced the official PairUAV baseline workflow, adapted it to my local Windows environment, and prepared a valid Codabench submission package. The released method is a strong and efficient starting point, but there is still clear room for improvement in match robustness, feature fusion, and regression design. In future work, I would continue with full local retraining after obtaining the gated training data and then compare the new leaderboard result against the official baseline.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}
